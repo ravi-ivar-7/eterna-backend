@@ -3,6 +3,7 @@ export type OrderStatus = 'pending' | 'routing' | 'building' | 'submitted' | 'co
 export interface OrderJobData {
   orderId: string;
   userId: number;
+  userWalletAddress: string;
   tokenIn: string;
   tokenOut: string;
   amountIn: number;
@@ -30,6 +31,7 @@ export interface OrderUpdate {
     meteora?: number;
   };
   selectedDex?: string;
+  unsignedTransaction?: string;
   txHash?: string;
   executionPrice?: number;
   error?: string;

@@ -1,9 +1,10 @@
 import { AmmImpl } from '@meteora-ag/dynamic-amm-sdk';
 import { connection } from '@/lib/solana/connection';
 import { getWallet } from '@/lib/solana/wallet';
-import { PublicKey, Transaction } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
 import { DexQuote } from '@/types/order';
 import Decimal from 'decimal.js';
+import { BN } from '@coral-xyz/anchor';
 
 const METEORA_POOL_ADDRESSES: Record<string, string> = {
   'SOL-USDC': '5CX2qVqPbBZuiDQHJKjqp4KBdkHzJYNHNjjNrKKzQaVs',
@@ -29,20 +30,20 @@ export async function getMeteoraQuote(
     }
 
     const poolPubkey = new PublicKey(poolAddress);
-    const ammPool = await AmmImpl.create(connection, poolPubkey);
+    const ammPool = await AmmImpl.create(connection as any, poolPubkey);
 
-    const inputAmount = new Decimal(amountIn).mul(1e9).toNumber();
-    const slippage = 1;
+    const inputAmount = new BN(new Decimal(amountIn).mul(1e9).toFixed(0));
+    const slippageBps = 100;
 
     const quote = ammPool.getSwapQuote(
       new PublicKey(tokenInAddress),
-      BigInt(Math.floor(inputAmount)),
-      slippage
+      inputAmount,
+      slippageBps
     );
 
-    const outputAmount = Number(quote.outAmount) / 1e9;
-    const priceImpact = quote.priceImpact || 0;
-    const fee = Number(quote.fee || 0) / 1e9;
+    const outputAmount = quote.swapOutAmount.toNumber() / 1e9;
+    const priceImpact = quote.priceImpact.toNumber();
+    const fee = quote.fee.toNumber() / 1e9;
 
     return {
       dex: 'meteora',
@@ -71,27 +72,30 @@ export async function executeMeteoraSwap(
     }
 
     const poolPubkey = new PublicKey(poolAddress);
-    const ammPool = await AmmImpl.create(connection, poolPubkey);
+    const ammPool = await AmmImpl.create(connection as any, poolPubkey);
 
-    const inputAmount = new Decimal(amountIn).mul(1e9).toNumber();
-    const slippageBps = slippage * 10000;
+    const inputAmount = new BN(new Decimal(amountIn).mul(1e9).toFixed(0));
+
+    const quote = ammPool.getSwapQuote(
+      new PublicKey(tokenInAddress),
+      inputAmount,
+      slippage * 100
+    );
 
     const swapTx = await ammPool.swap(
       wallet.publicKey,
       new PublicKey(tokenInAddress),
-      BigInt(Math.floor(inputAmount)),
-      BigInt(0),
-      slippageBps
+      inputAmount,
+      quote.minSwapOutAmount
     );
 
-    const transaction = new Transaction().add(swapTx);
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = wallet.publicKey;
+    swapTx.recentBlockhash = blockhash;
+    swapTx.feePayer = wallet.publicKey;
 
-    transaction.sign(wallet);
+    swapTx.sign(wallet);
 
-    const signature = await connection.sendRawTransaction(transaction.serialize(), {
+    const signature = await connection.sendRawTransaction(swapTx.serialize(), {
       skipPreflight: false,
       maxRetries: 3,
     });

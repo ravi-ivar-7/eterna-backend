@@ -1,9 +1,9 @@
-import { Raydium, TxVersion, parseTokenAccountResp } from '@raydium-io/raydium-sdk-v2';
+import { Raydium } from '@raydium-io/raydium-sdk-v2';
 import { connection } from '@/lib/solana/connection';
 import { getWallet } from '@/lib/solana/wallet';
-import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { DexQuote } from '@/types/order';
 import Decimal from 'decimal.js';
+import BN from 'bn.js';
 
 let raydiumInstance: Raydium | null = null;
 
@@ -20,7 +20,6 @@ async function getRaydiumInstance(): Promise<Raydium> {
     cluster: 'devnet',
     disableFeatureCheck: true,
     disableLoadToken: false,
-    blockhashCommitment: 'finalized',
   });
 
   console.log('Raydium SDK initialized');
@@ -35,39 +34,34 @@ export async function getRaydiumQuote(
   try {
     const raydium = await getRaydiumInstance();
 
-    const inputAmount = new Decimal(amountIn).mul(1e9).toFixed(0);
+    const inputAmount = new BN(new Decimal(amountIn).mul(1e9).toFixed(0));
 
-    const { allPoolKeys } = await raydium.liquidity.getPoolInfoFromRpc({
-      programId: raydium.program.AmmV4.programId,
+    const poolInfo = await raydium.api.fetchPoolByMints({
+      mint1: tokenInAddress,
+      mint2: tokenOutAddress,
     });
 
-    const targetPool = allPoolKeys.find(
-      (pool) =>
-        (pool.baseMint.toString() === tokenInAddress &&
-          pool.quoteMint.toString() === tokenOutAddress) ||
-        (pool.baseMint.toString() === tokenOutAddress &&
-          pool.quoteMint.toString() === tokenInAddress)
-    );
-
-    if (!targetPool) {
+    if (!poolInfo || !poolInfo.data || poolInfo.data.length === 0) {
       throw new Error('No Raydium pool found for this token pair');
     }
 
-    const { execute, extInfo } = await raydium.liquidity.swap({
-      poolInfo: targetPool,
+    const pool = poolInfo.data[0];
+
+    if (pool.type !== 'Standard') {
+      throw new Error('Only standard AMM pools are supported');
+    }
+
+    const { amountOut } = raydium.liquidity.computeAmountOut({
+      poolInfo: pool as any,
       amountIn: inputAmount,
-      amountOut: '0',
-      fixedSide: 'in',
-      inputMint: tokenInAddress,
-      txVersion: TxVersion.V0,
-      config: {
-        bypassAssociatedCheck: false,
-      },
+      mintIn: tokenInAddress,
+      mintOut: tokenOutAddress,
+      slippage: 1,
     });
 
-    const outputAmount = Number(extInfo.amountOut) / 1e9;
-    const priceImpact = Number(extInfo.priceImpact || 0);
-    const fee = Number(extInfo.fee || 0) / 1e9;
+    const outputAmount = amountOut.toNumber() / 1e9;
+    const priceImpact = 0;
+    const fee = 0;
 
     return {
       dex: 'raydium',
@@ -89,35 +83,40 @@ export async function executeRaydiumSwap(
 ): Promise<string> {
   try {
     const raydium = await getRaydiumInstance();
-    const wallet = getWallet();
 
-    const inputAmount = new Decimal(amountIn).mul(1e9).toFixed(0);
+    const inputAmount = new BN(new Decimal(amountIn).mul(1e9).toFixed(0));
 
-    const { allPoolKeys } = await raydium.liquidity.getPoolInfoFromRpc({
-      programId: raydium.program.AmmV4.programId,
+    const poolInfo = await raydium.api.fetchPoolByMints({
+      mint1: tokenInAddress,
+      mint2: tokenOutAddress,
     });
 
-    const targetPool = allPoolKeys.find(
-      (pool) =>
-        (pool.baseMint.toString() === tokenInAddress &&
-          pool.quoteMint.toString() === tokenOutAddress) ||
-        (pool.baseMint.toString() === tokenOutAddress &&
-          pool.quoteMint.toString() === tokenInAddress)
-    );
-
-    if (!targetPool) {
+    if (!poolInfo || !poolInfo.data || poolInfo.data.length === 0) {
       throw new Error('No Raydium pool found for this token pair');
     }
 
-    const { execute } = await raydium.liquidity.swap({
-      poolInfo: targetPool,
+    const pool = poolInfo.data[0];
+
+    if (pool.type !== 'Standard') {
+      throw new Error('Only standard AMM pools are supported');
+    }
+
+    const { amountOut, minAmountOut } = raydium.liquidity.computeAmountOut({
+      poolInfo: pool as any,
       amountIn: inputAmount,
-      amountOut: '0',
-      fixedSide: 'in',
+      mintIn: tokenInAddress,
+      mintOut: tokenOutAddress,
+      slippage: slippage,
+    });
+
+    const { execute } = await raydium.liquidity.swap({
+      poolInfo: pool as any,
+      amountIn: new BN(inputAmount),
+      amountOut: new BN(minAmountOut),
       inputMint: tokenInAddress,
-      txVersion: TxVersion.V0,
+      fixedSide: 'in',
       config: {
-        bypassAssociatedCheck: false,
+        associatedOnly: false,
       },
     });
 
