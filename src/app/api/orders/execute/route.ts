@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, orders } from '@/lib/db';
+import { db, orders, users } from '@/lib/db';
+import { eq } from 'drizzle-orm';
 import { withAuth, AuthenticatedRequest } from '@/lib/auth/middleware';
 import { addOrderToQueue } from '@/lib/queue/bullmq';
 import { validateTokenPair, getTokenAddress } from '@/lib/solana/tokens';
 import { OrderExecuteRequest, OrderExecuteResponse } from '@/types/order';
+import { publishOrderUpdate } from '@/lib/redis/pubsub';
 
 async function handler(req: AuthenticatedRequest): Promise<NextResponse> {
   try {
@@ -42,6 +44,17 @@ async function handler(req: AuthenticatedRequest): Promise<NextResponse> {
 
     const userId = req.user!.userId;
 
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId),
+    });
+
+    if (!user?.walletAddress) {
+      return NextResponse.json(
+        { error: 'Wallet not connected. Please connect your wallet first.' },
+        { status: 400 }
+      );
+    }
+
     const [order] = await db
       .insert(orders)
       .values({
@@ -53,9 +66,14 @@ async function handler(req: AuthenticatedRequest): Promise<NextResponse> {
       })
       .returning();
 
+    // Note: Don't publish "pending" status here - client sets it optimistically
+    // This avoids race condition where updates are published before client subscribes to room
+
+    // Add to queue - worker will publish updates starting from "routing"
     await addOrderToQueue({
       orderId: order.id,
       userId,
+      userWalletAddress: user.walletAddress,
       tokenIn: tokenIn.toUpperCase(),
       tokenOut: tokenOut.toUpperCase(),
       amountIn: amount,
