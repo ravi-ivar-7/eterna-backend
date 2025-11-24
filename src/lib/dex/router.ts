@@ -1,5 +1,5 @@
-import { getRaydiumQuote, executeRaydiumSwap } from './raydium';
-import { getMeteoraQuote, executeMeteoraSwap } from './meteora';
+import { getRaydiumQuote, buildRaydiumSwapTransaction } from './raydium';
+import { getMeteoraQuote, buildMeteoraSwapTransaction } from './meteora';
 import { DexQuote } from '@/types/order';
 
 export interface BestQuote {
@@ -24,51 +24,40 @@ export async function getBestQuote(
   const meteoraQuote =
     meteoraResult.status === 'fulfilled' ? meteoraResult.value : null;
 
+  if (raydiumResult.status === 'rejected') {
+    console.log('Raydium quote failed:', (raydiumResult.reason as Error)?.message);
+  }
+  if (meteoraResult.status === 'rejected') {
+    console.log('Meteora quote failed:', (meteoraResult.reason as Error)?.message);
+  }
+
   if (!raydiumQuote && !meteoraQuote) {
     throw new Error('No valid quotes available from any DEX');
   }
 
-  if (!raydiumQuote) {
-    console.log('Raydium quote failed, using Meteora');
-    return {
-      selectedDex: 'meteora',
-      outputAmount: meteoraQuote!.outputAmount,
-      raydiumQuote: null,
-      meteoraQuote,
-    };
-  }
+  const quotes: { dex: 'raydium' | 'meteora'; quote: DexQuote }[] = [];
+  if (raydiumQuote) quotes.push({ dex: 'raydium', quote: raydiumQuote });
+  if (meteoraQuote) quotes.push({ dex: 'meteora', quote: meteoraQuote });
 
-  if (!meteoraQuote) {
-    console.log('Meteora quote failed, using Raydium');
-    return {
-      selectedDex: 'raydium',
-      outputAmount: raydiumQuote.outputAmount,
-      raydiumQuote,
-      meteoraQuote: null,
-    };
-  }
-
-  const selectedDex =
-    raydiumQuote.outputAmount > meteoraQuote.outputAmount ? 'raydium' : 'meteora';
+  quotes.sort((a, b) => b.quote.outputAmount - a.quote.outputAmount);
+  const best = quotes[0];
 
   console.log('DEX Routing Decision:', {
-    raydiumOutput: raydiumQuote.outputAmount,
-    meteoraOutput: meteoraQuote.outputAmount,
-    selected: selectedDex,
+    raydiumOutput: raydiumQuote?.outputAmount ?? 'N/A',
+    meteoraOutput: meteoraQuote?.outputAmount ?? 'N/A',
+    selected: best.dex,
   });
 
   return {
-    selectedDex,
-    outputAmount:
-      selectedDex === 'raydium'
-        ? raydiumQuote.outputAmount
-        : meteoraQuote.outputAmount,
+    selectedDex: best.dex,
+    outputAmount: best.quote.outputAmount,
     raydiumQuote,
     meteoraQuote,
   };
 }
 
-export async function executeSwap(
+export async function buildSwapTransaction(
+  userWalletAddress: string,
   dex: 'raydium' | 'meteora',
   tokenInAddress: string,
   tokenOutAddress: string,
@@ -76,8 +65,7 @@ export async function executeSwap(
   slippage: number
 ): Promise<string> {
   if (dex === 'raydium') {
-    return executeRaydiumSwap(tokenInAddress, tokenOutAddress, amountIn, slippage);
-  } else {
-    return executeMeteoraSwap(tokenInAddress, tokenOutAddress, amountIn, slippage);
+    return buildRaydiumSwapTransaction(userWalletAddress, tokenInAddress, tokenOutAddress, amountIn, slippage);
   }
+  return buildMeteoraSwapTransaction(userWalletAddress, tokenInAddress, tokenOutAddress, amountIn, slippage);
 }
