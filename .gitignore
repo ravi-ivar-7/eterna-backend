@@ -45,4 +45,5 @@ next-env.d.ts
 
 drizzle/
 RULES.md
-Resources/Keys.md
+Keys.md
+Task.md
