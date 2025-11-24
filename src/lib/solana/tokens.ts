@@ -1,11 +1,35 @@
 import { PublicKey } from '@solana/web3.js';
 import { connection } from './connection';
 
+// Mainnet token addresses (used with Jupiter aggregator)
 export const TOKEN_ADDRESSES: Record<string, string> = {
   SOL: 'So11111111111111111111111111111111111111112',
   USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
   USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
 };
+
+// Token decimals for each token
+export const TOKEN_DECIMALS: Record<string, number> = {
+  SOL: 9,
+  USDC: 6,
+  USDT: 6,
+};
+
+// Reverse lookup: mint address -> symbol
+export const TOKEN_SYMBOLS: Record<string, string> = Object.entries(TOKEN_ADDRESSES).reduce(
+  (acc, [symbol, address]) => ({ ...acc, [address]: symbol }),
+  {}
+);
+
+// Get decimals for a token by address
+export function getTokenDecimals(address: string): number {
+  const symbol = TOKEN_SYMBOLS[address];
+  return TOKEN_DECIMALS[symbol] || 9; // Default to 9 if unknown
+}
+
+export function getTokenSymbol(address: string): string {
+  return TOKEN_SYMBOLS[address] || address;
+}
 
 export function getTokenAddress(symbol: string): string {
   const address = TOKEN_ADDRESSES[symbol.toUpperCase()];

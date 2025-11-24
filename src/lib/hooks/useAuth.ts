@@ -5,6 +5,7 @@ interface AuthState {
   token: string | null;
   username: string | null;
   userId: number | null;
+  isLoading: boolean;
 }
 
 export function useAuth() {
@@ -13,6 +14,7 @@ export function useAuth() {
     token: null,
     username: null,
     userId: null,
+    isLoading: true,
   });
 
   useEffect(() => {
@@ -26,7 +28,10 @@ export function useAuth() {
         token,
         username,
         userId: parseInt(userId),
+        isLoading: false,
       });
+    } else {
+      setAuth(prev => ({ ...prev, isLoading: false }));
     }
   }, []);
 
@@ -54,6 +59,7 @@ export function useAuth() {
         token: data.token,
         username: data.username,
         userId: data.userId,
+        isLoading: false,
       });
 
       return true;
@@ -73,6 +79,7 @@ export function useAuth() {
       token: null,
       username: null,
       userId: null,
+      isLoading: false,
     });
   };
 
