@@ -6,10 +6,15 @@ if (!process.env.REDIS_URL) {
   throw new Error('REDIS_URL environment variable is not set');
 }
 
+const redisUrl = new URL(process.env.REDIS_URL);
+const username = redisUrl.username ? decodeURIComponent(redisUrl.username) : undefined;
+const password = redisUrl.password ? decodeURIComponent(redisUrl.password) : undefined;
+
 const connection = {
-  host: new URL(process.env.REDIS_URL).hostname,
-  port: parseInt(new URL(process.env.REDIS_URL).port) || 6379,
-  password: new URL(process.env.REDIS_URL).password || undefined,
+  host: redisUrl.hostname,
+  port: parseInt(redisUrl.port) || 6379,
+  username,
+  password,
   ...(process.env.REDIS_URL.startsWith('rediss://') && {
     tls: {
       rejectUnauthorized: false,

@@ -5,7 +5,7 @@ export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   username: varchar('username', { length: 50 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-  walletAddress: varchar('wallet_address', { length: 44 }).notNull().unique(),
+  walletAddress: varchar('wallet_address', { length: 44 }).unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -40,4 +40,4 @@ export type NewUser = typeof users.$inferInsert;
 export type Order = typeof orders.$inferSelect;
 export type NewOrder = typeof orders.$inferInsert;
 
-export type OrderStatus = 'pending' | 'routing' | 'building' | 'submitted' | 'confirmed' | 'failed';
+export type OrderStatus = 'pending' | 'waiting_for_price' | 'confirmed' | 'failed';
